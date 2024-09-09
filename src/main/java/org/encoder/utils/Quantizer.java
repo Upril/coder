@@ -1,3 +1,5 @@
+package org.encoder.utils;
+
 public class Quantizer {
 
     public int[] quantize(int[] dctCoefficients) {

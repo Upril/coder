@@ -10,6 +10,7 @@ public class Macroblock {
     private int[] chrominanceU;
     private int[] chrominanceV;
     private MotionVector motionVector;
+    private static final int QUANTIZATION_SCALE = 20;
 
     public MotionVector getMotionVector() {
         return motionVector;
@@ -78,9 +79,9 @@ public class Macroblock {
 
     public void encodeIntra(Bitstream bitstream) throws IOException {
         // DCT
-        int[] dctLuminance = applyDct(luminance);
-        int[] dctChrominanceU = applyDct(chrominanceU);
-        int[] dctChrominanceV = applyDct(chrominanceV);
+        int[] dctLuminance = applyDct(luminance, true);
+        int[] dctChrominanceU = applyDct(chrominanceU, false);
+        int[] dctChrominanceV = applyDct(chrominanceV, false);
 
         // Quantization
         int[] quantizedLuminance = quantize(dctLuminance);
@@ -105,9 +106,9 @@ public class Macroblock {
         int[] residualChrominanceV = getResidualChrominanceV(motionVector);
 
         // DCT
-        int[] dctLuminance = applyDct(residualLuminance);
-        int[] dctChrominanceU = applyDct(residualChrominanceU);
-        int[] dctChrominanceV = applyDct(residualChrominanceV);
+        int[] dctLuminance = applyDct(residualLuminance, true);
+        int[] dctChrominanceU = applyDct(residualChrominanceU, false);
+        int[] dctChrominanceV = applyDct(residualChrominanceV, false);
 
         // Quantize the DCT coefficients
         int[] quantizedLuminance = quantize(dctLuminance);
@@ -133,20 +134,43 @@ public class Macroblock {
         bitstream.writeBits(16, motionVector.getY()); // Encode Y component of motion vector
     }
 
-    private int[] applyDct(int[] block) {
-        // Implement DCT here
-        return block; // Replace with actual DCT implementation
+    private int[] applyDct(int[] inputBlock, boolean isLuminance) {
+        int[] dctResult = new int[inputBlock.length];
+
+        if (isLuminance) {
+            for (int blockNr = 0; blockNr < 4; blockNr++) {
+                double[][] block = DCT.convertTo2D(extract8x8Block(inputBlock, blockNr));
+                double[][] dctBlock = DCT.applyDCT(block);
+                int[] dct1D = DCT.convertTo1D(dctBlock);
+                insertDctBlock(dctResult, dct1D, blockNr);
+            }
+        } else {
+            double[][] chromaBlock = DCT.convertTo2D(inputBlock);
+            double[][] dctChromaBlock = DCT.applyDCT(chromaBlock);
+            int[] dct1DChroma = DCT.convertTo1D(dctChromaBlock);
+            System.arraycopy(dct1DChroma, 0, dctResult, 0, dct1DChroma.length);
+        }
+
+        return dctResult;
     }
 
-    private int[] quantize(int[] dctCoefficients) {
-        // Implement quantization here
-        return dctCoefficients; // Replace with actual quantization implementation
+    public int[] quantize(int[] dctCoefficients) {
+        int[] quantizedValues = new int[dctCoefficients.length];
+        for (int i = 0; i < dctCoefficients.length; i++) {
+            // Example quantization, ensure no negative values are directly encoded
+            quantizedValues[i] = Math.max(0, Math.min(255, dctCoefficients[i] / QUANTIZATION_SCALE));
+        }
+        return quantizedValues;
     }
 
     private void encodeYComponent(Bitstream bitstream, int[] quantizedLuminance) throws IOException {
         for (int value : quantizedLuminance) {
-            bitstream.writeBits(8, value);
+            int encodedValue = encodeSignedValue(value);
+            bitstream.writeBits(9, encodedValue);
         }
+    }
+    private int encodeSignedValue(int value) {
+        return (value >= 0) ? (value << 1) : ((-value << 1) - 1);
     }
 
     private void encodeUComponent(Bitstream bitstream, int[] quantizedChrominanceU) throws IOException {
@@ -158,6 +182,30 @@ public class Macroblock {
     private void encodeVComponent(Bitstream bitstream, int[] quantizedChrominanceV) throws IOException {
         for (int value : quantizedChrominanceV) {
             bitstream.writeBits(8, value);
+        }
+    }
+    private int[] extract8x8Block(int[] input, int blockIndex) {
+        int[] block = new int[64];
+        int blockOffsetX = (blockIndex % 2) * 8;
+        int blockOffsetY = (blockIndex / 2) * 8;
+
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int sourceIndex = (blockOffsetY + y) * 16 + (blockOffsetX + x);
+                block[y * 8 + x] = input[sourceIndex];
+            }
+        }
+        return block;
+    }
+    private void insertDctBlock(int[] result, int[] dctBlock, int blockIndex) {
+        int blockOffsetX = (blockIndex % 2) * 8;
+        int blockOffsetY = (blockIndex / 2) * 8;
+
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int targetIndex = (blockOffsetY + y) * 16 + (blockOffsetX + x);
+                result[targetIndex] = dctBlock[y * 8 + x];
+            }
         }
     }
     // Get residual luminance after motion compensation
