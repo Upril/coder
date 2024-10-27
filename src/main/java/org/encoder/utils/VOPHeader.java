@@ -1,8 +1,9 @@
 package org.encoder.utils;
 
 import java.io.IOException;
+import java.io.Serializable;
 
-public class VOPHeader {
+public class VOPHeader implements Serializable {
     private int vopType;                 // VOP type (0 = I-VOP, 1 = P-VOP)
     private int vopTimeIncrement;        // VOP time increment
     private boolean vopCoded;            // Indicates if VOP is coded

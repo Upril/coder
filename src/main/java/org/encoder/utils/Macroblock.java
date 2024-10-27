@@ -1,10 +1,12 @@
 package org.encoder.utils;
 
 import java.awt.*;
+import java.io.Serializable;
+import java.util.List;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 
-public class Macroblock {
+public class Macroblock implements Serializable {
     private int startX, startY;
     private int[] luminance;
     private int[] chrominanceU;
@@ -77,155 +79,36 @@ public class Macroblock {
         return new int[] {y, u, v};
     }
 
-    public void encodeIntra(Bitstream bitstream) throws IOException {
-        // DCT
-        int[] dctLuminance = applyDct(luminance, true);
-        int[] dctChrominanceU = applyDct(chrominanceU, false);
-        int[] dctChrominanceV = applyDct(chrominanceV, false);
-
-        // Quantization
-        int[] quantizedLuminance = quantize(dctLuminance);
-        int[] quantizedChrominanceU = quantize(dctChrominanceU);
-        int[] quantizedChrominanceV = quantize(dctChrominanceV);
-
-        // Bitstream encoding of processed MB
-        encodeYComponent(bitstream, quantizedLuminance);
-        encodeUComponent(bitstream, quantizedChrominanceU);
-        encodeVComponent(bitstream, quantizedChrominanceV);
-    }
-
-    // Encode the macroblock for a P-VOP (Inter-coded)
-    public void encodeInter(Bitstream bitstream) throws IOException {
-        // Motion compensation
-        MotionVector motionVector = estimateMotion(); // Placeholder for motion vector estimation
-        encodeMotionVector(bitstream, motionVector);
-
-        // Residuals
-        int[] residualLuminance = getResidualLuminance(motionVector);
-        int[] residualChrominanceU = getResidualChrominanceU(motionVector);
-        int[] residualChrominanceV = getResidualChrominanceV(motionVector);
-
-        // DCT
-        int[] dctLuminance = applyDct(residualLuminance, true);
-        int[] dctChrominanceU = applyDct(residualChrominanceU, false);
-        int[] dctChrominanceV = applyDct(residualChrominanceV, false);
-
-        // Quantize the DCT coefficients
-        int[] quantizedLuminance = quantize(dctLuminance);
-        int[] quantizedChrominanceU = quantize(dctChrominanceU);
-        int[] quantizedChrominanceV = quantize(dctChrominanceV);
-
-        //Encode
-        encodeYComponent(bitstream, quantizedLuminance);
-        encodeUComponent(bitstream, quantizedChrominanceU);
-        encodeVComponent(bitstream, quantizedChrominanceV);
-    }
-    private MotionVector estimateMotion() {
-        // Implement motion estimation based on the reference frame
-        return new MotionVector(0, 0); // Example placeholder
-    }
-    private int[] applyMotionCompensation(int[] block, MotionVector motionVector) {
-        // Implement motion compensation logic here
-        // For now, return the original block as a placeholder
-        return block;
-    }
-    private void encodeMotionVector(Bitstream bitstream, MotionVector motionVector) throws IOException {
-        bitstream.writeBits(16, motionVector.getX()); // Encode X component of motion vector
-        bitstream.writeBits(16, motionVector.getY()); // Encode Y component of motion vector
-    }
-
-    private int[] applyDct(int[] inputBlock, boolean isLuminance) {
-        int[] dctResult = new int[inputBlock.length];
-
-        if (isLuminance) {
-            for (int blockNr = 0; blockNr < 4; blockNr++) {
-                double[][] block = DCT.convertTo2D(extract8x8Block(inputBlock, blockNr));
-                double[][] dctBlock = DCT.applyDCT(block);
-                int[] dct1D = DCT.convertTo1D(dctBlock);
-                insertDctBlock(dctResult, dct1D, blockNr);
-            }
+    public void setLuminance(int[] luminance) {
+        if (luminance.length == this.luminance.length) {
+            this.luminance = luminance;
         } else {
-            double[][] chromaBlock = DCT.convertTo2D(inputBlock);
-            double[][] dctChromaBlock = DCT.applyDCT(chromaBlock);
-            int[] dct1DChroma = DCT.convertTo1D(dctChromaBlock);
-            System.arraycopy(dct1DChroma, 0, dctResult, 0, dct1DChroma.length);
-        }
-
-        return dctResult;
-    }
-
-    public int[] quantize(int[] dctCoefficients) {
-        int[] quantizedValues = new int[dctCoefficients.length];
-        for (int i = 0; i < dctCoefficients.length; i++) {
-            // Example quantization, ensure no negative values are directly encoded
-            quantizedValues[i] = Math.max(0, Math.min(255, dctCoefficients[i] / QUANTIZATION_SCALE));
-        }
-        return quantizedValues;
-    }
-
-    private void encodeYComponent(Bitstream bitstream, int[] quantizedLuminance) throws IOException {
-        for (int value : quantizedLuminance) {
-            int encodedValue = encodeSignedValue(value);
-            bitstream.writeBits(9, encodedValue);
-        }
-    }
-    private int encodeSignedValue(int value) {
-        return (value >= 0) ? (value << 1) : ((-value << 1) - 1);
-    }
-
-    private void encodeUComponent(Bitstream bitstream, int[] quantizedChrominanceU) throws IOException {
-        for (int value : quantizedChrominanceU) {
-            bitstream.writeBits(8, value);
+            throw new IllegalArgumentException("Luminance array size mismatch: this.luminance: "+this.luminance.length+" luminance: "+luminance.length);
         }
     }
 
-    private void encodeVComponent(Bitstream bitstream, int[] quantizedChrominanceV) throws IOException {
-        for (int value : quantizedChrominanceV) {
-            bitstream.writeBits(8, value);
+    // Set the chrominance U (Cb) values for the macroblock
+    public void setChrominanceU(int[] chrominanceU) {
+        if (chrominanceU.length == this.chrominanceU.length) {
+            this.chrominanceU = chrominanceU;
+        } else {
+            throw new IllegalArgumentException("Chrominance U array size mismatch");
         }
     }
-    private int[] extract8x8Block(int[] input, int blockIndex) {
-        int[] block = new int[64];
-        int blockOffsetX = (blockIndex % 2) * 8;
-        int blockOffsetY = (blockIndex / 2) * 8;
 
-        for (int y = 0; y < 8; y++) {
-            for (int x = 0; x < 8; x++) {
-                int sourceIndex = (blockOffsetY + y) * 16 + (blockOffsetX + x);
-                block[y * 8 + x] = input[sourceIndex];
-            }
-        }
-        return block;
-    }
-    private void insertDctBlock(int[] result, int[] dctBlock, int blockIndex) {
-        int blockOffsetX = (blockIndex % 2) * 8;
-        int blockOffsetY = (blockIndex / 2) * 8;
-
-        for (int y = 0; y < 8; y++) {
-            for (int x = 0; x < 8; x++) {
-                int targetIndex = (blockOffsetY + y) * 16 + (blockOffsetX + x);
-                result[targetIndex] = dctBlock[y * 8 + x];
-            }
+    // Set the chrominance V (Cr) values for the macroblock
+    public void setChrominanceV(int[] chrominanceV) {
+        if (chrominanceV.length == this.chrominanceV.length) {
+            this.chrominanceV = chrominanceV;
+        } else {
+            throw new IllegalArgumentException("Chrominance V array size mismatch");
         }
     }
-    // Get residual luminance after motion compensation
-    private int[] getResidualLuminance(MotionVector motionVector) {
-        // Compute residuals based on motion compensation and reference frame
-        // Placeholder logic; should calculate the difference from the reference frame
-        return luminance; // Replace with actual residual computation
-    }
-
-    // Get residual chrominance U after motion compensation
-    private int[] getResidualChrominanceU(MotionVector motionVector) {
-        // Compute residuals based on motion compensation and reference frame
-        // Placeholder logic; should calculate the difference from the reference frame
-        return chrominanceU; // Replace with actual residual computation
-    }
-
-    // Get residual chrominance V after motion compensation
-    private int[] getResidualChrominanceV(MotionVector motionVector) {
-        // Compute residuals based on motion compensation and reference frame
-        // Placeholder logic; should calculate the difference from the reference frame
-        return chrominanceV; // Replace with actual residual computation
+    public static int[] addResidual(int[] predicted, int[] residual) {
+        int[] result = new int[predicted.length];
+        for (int i = 0; i < predicted.length; i++) {
+            result[i] = predicted[i] + residual[i];
+        }
+        return result;
     }
 }

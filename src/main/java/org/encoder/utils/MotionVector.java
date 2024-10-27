@@ -1,6 +1,8 @@
 package org.encoder.utils;
 
-public class MotionVector {
+import java.io.Serializable;
+
+public class MotionVector implements Serializable {
     private int x;
     private int y;
 

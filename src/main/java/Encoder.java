@@ -1,12 +1,12 @@
-import org.encoder.utils.Bitstream;
-import org.encoder.utils.I_VOP;
-import org.encoder.utils.P_VOP;
-import org.encoder.utils.VideoObjectPlane;
+import org.encoder.utils.*;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,34 +19,40 @@ public class Encoder {
     }
 
     // Function to encode the sequence of frames
-    public void encode(List<BufferedImage> frames) {
-        for (int i = 0; i < frames.size(); i++) {
-            VideoObjectPlane vop;
-            if (i == 0) {
-                vop = new I_VOP(frames.get(i));
-            } else {
-                vop = new P_VOP(frames.get(i), vops.get(i - 1));
+
+    public void encodeToBinaryFile(List<BufferedImage> frames, String outputPath) throws IOException {
+        try (FileOutputStream fos = new FileOutputStream(outputPath)) {
+            ObjectOutputStream oos = new ObjectOutputStream(fos);
+
+            for (int i = 0; i < frames.size(); i++) {
+                VideoObjectPlane vop;
+                if (i == 0) {
+                    vop = new I_VOP(frames.get(i)); // First frame as I-VOP
+                } else {
+                    vop = new P_VOP(frames.get(i), vops.get(i - 1)); // Subsequent frames as P-VOPs
+                }
+                vops.add(vop);
+
+                // Serialize VOP object to the file
+                oos.writeObject(vop);
             }
-            vops.add(vop);
+
+            oos.close();
         }
-        Bitstream bitstream = new Bitstream();
-        for (VideoObjectPlane vop : vops) {
-            vop.encode(bitstream);
-        }
-        try (FileOutputStream fos = new FileOutputStream(new File("output.m4v"))) {
-            fos.write(bitstream.toByteArray());
+    }
+    public static void main(String[] args) {
+        // Example usage
+        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 852, 480, 844); // Load YUV frames
+        Encoder encoder = new Encoder();
+        try{
+            encoder.encodeToBinaryFile(frames,"output.bin");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+
     }
 
-    public static void main(String[] args) {
-        // Example usage
-        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 640, 480, 30); // Load YUV frames
-        Encoder encoder = new Encoder();
-        encoder.encode(frames);
-    }
-
+    // Function to load YUV frames (as it is in your original code)
     private static List<BufferedImage> loadYUVFrames(String yuvFilePath, int width, int height, int frameCount) {
         List<BufferedImage> frames = new ArrayList<>();
         try {
@@ -71,7 +77,6 @@ public class Encoder {
         int frameSize = width * height;
         int chromaSize = frameSize / 4;
 
-        // YUV 4:2:0 format
         int yIndex = offset;
         int uIndex = offset + frameSize;
         int vIndex = uIndex + chromaSize;
