@@ -40,7 +40,6 @@ public class Bitstream implements Serializable{
         }
     }
 
-    // Method to read 'n' bits from the bitstream
     public int readBits(int numBits) throws IOException {
         int value = 0;
         while (numBits > 0) {
@@ -71,15 +70,15 @@ public class Bitstream implements Serializable{
     }
 
     public byte[] toByteArray() {
-        try {
-            // Write remaining bits
-            if (bitCount > 0) {
-                outputStream.write(bitBuffer & 0xFF);
-            }
-            outputStream.flush();
-            return outputStream.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException("Error flushing bitstream", e);
+        if (bitCount > 0) {
+            outputStream.write(bitBuffer & 0xFF);
+        }
+//      outputStream.flush();
+        return outputStream.toByteArray();
+    }
+    public void writeToFile(String filePath) throws IOException {
+        try (FileOutputStream fos = new FileOutputStream(filePath)) {
+            fos.write(toByteArray());
         }
     }
 }

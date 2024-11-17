@@ -18,31 +18,25 @@ public class Encoder {
         vops = new ArrayList<>();
     }
 
-    // Function to encode the sequence of frames
-
     public void encodeToBinaryFile(List<BufferedImage> frames, String outputPath) throws IOException {
         try (FileOutputStream fos = new FileOutputStream(outputPath)) {
-            ObjectOutputStream oos = new ObjectOutputStream(fos);
+            Bitstream bitstream = new Bitstream();
 
             for (int i = 0; i < frames.size(); i++) {
                 VideoObjectPlane vop;
                 if (i == 0) {
-                    vop = new I_VOP(frames.get(i)); // First frame as I-VOP
+                    vop = new I_VOP(frames.get(i));
                 } else {
-                    vop = new P_VOP(frames.get(i), vops.get(i - 1)); // Subsequent frames as P-VOPs
+                    vop = new P_VOP(frames.get(i), vops.get(i - 1));
                 }
                 vops.add(vop);
-
-                // Serialize VOP object to the file
-                oos.writeObject(vop);
+                vop.encode(bitstream);
             }
-
-            oos.close();
+            bitstream.writeToFile(outputPath);
         }
     }
     public static void main(String[] args) {
-        // Example usage
-        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 852, 480, 844); // Load YUV frames
+        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 852, 480, 844);
         Encoder encoder = new Encoder();
         try{
             encoder.encodeToBinaryFile(frames,"output.bin");
@@ -52,12 +46,11 @@ public class Encoder {
 
     }
 
-    // Function to load YUV frames (as it is in your original code)
     private static List<BufferedImage> loadYUVFrames(String yuvFilePath, int width, int height, int frameCount) {
         List<BufferedImage> frames = new ArrayList<>();
         try {
             byte[] yuvData = Files.readAllBytes(new File(yuvFilePath).toPath());
-            int frameSize = width * height * 3 / 2; // YUV 4:2:0 format
+            int frameSize = width * height * 3 / 2; // YUV 4:2:0
 
             for (int i = 0; i < frameCount; i++) {
                 int offset = i * frameSize;

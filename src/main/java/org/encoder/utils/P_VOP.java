@@ -17,70 +17,50 @@ public class P_VOP extends VideoObjectPlane implements Serializable {
     @Override
     public void encode(Bitstream bitstream) {
         try {
-            // Encode VOP header
             header.encodeHeader(bitstream);
 
-            // Perform motion estimation
-//            MotionEstimator motionEstimation = new MotionEstimator(referenceVOP, this);
-//            motionEstimation.estimate();
-
             for (Macroblock macroblock : macroblocks) {
-//                // Get the predicted macroblock from motion estimation
-//                MotionVector motionVector = macroblock.getMotionVector();
-//                Macroblock predictedBlock = referenceVOP.getMacroblockAt(
-//                        macroblock.getStartX() + motionVector.getX(),
-//                        macroblock.getStartY() + motionVector.getY());
-//
-//                // Calculate residual (current - predicted)
-//                int[] residualLuminance = calculateResidual(macroblock.getLuminance(), predictedBlock.getLuminance());
-//                int[] residualChrominanceU = calculateResidual(macroblock.getChrominanceU(), predictedBlock.getChrominanceU());
-//                int[] residualChrominanceV = calculateResidual(macroblock.getChrominanceV(), predictedBlock.getChrominanceV());
-//
-//                // Apply DCT and Quantization to residuals
-//                int[] dctLuminance = applyDCTAndQuantize(residualLuminance, true);
-//                int[] dctChrominanceU = applyDCTAndQuantize(residualChrominanceU, false);
-//                int[] dctChrominanceV = applyDCTAndQuantize(residualChrominanceV, false);
-//
-//                // Perform zig-zag scan and RLE
-//                int[] zigZagLuminance = DCT.zigZagScan(DCT.convertTo2D(dctLuminance));
-//                int[] zigZagChrominanceU = DCT.zigZagScan(DCT.convertTo2D(dctChrominanceU));
-//                int[] zigZagChrominanceV = DCT.zigZagScan(DCT.convertTo2D(dctChrominanceV));
-//
-//                List<int[]> rleLuminance = RLE.runLengthEncode(zigZagLuminance);
-//                List<int[]> rleChrominanceU = RLE.runLengthEncode(zigZagChrominanceU);
-//                List<int[]> rleChrominanceV = RLE.runLengthEncode(zigZagChrominanceV);
-//
-//                // Encode the RLE data
-//                encodeRLEData(bitstream, rleLuminance);
-//                encodeRLEData(bitstream, rleChrominanceU);
-//                encodeRLEData(bitstream, rleChrominanceV);
+                macroblock.applyDCTAndQuantization();
 
                 int[] luminance = macroblock.getLuminance();
                 int[] chrominanceU = macroblock.getChrominanceU();
                 int[] chrominanceV = macroblock.getChrominanceV();
 
-                for (int value : luminance) {
-                    bitstream.writeBits(8, value);
-                }
-                for (int value : chrominanceU) {
-                    bitstream.writeBits(8, value);
-                }
-                for (int value : chrominanceV) {
-                    bitstream.writeBits(8, value);
-                }
+                final int OFFSET = 128;
+                encodeWithRLE(bitstream, luminance, OFFSET);
+                encodeWithRLE(bitstream, chrominanceU, OFFSET);
+                encodeWithRLE(bitstream, chrominanceV, OFFSET);
             }
 
         } catch (IOException e) {
             throw new RuntimeException("Error encoding P-VOP", e);
         }
     }
-
-    // Calculate residual between current and predicted macroblocks
     private int[] calculateResidual(int[] current, int[] predicted) {
         int[] residual = new int[current.length];
         for (int i = 0; i < current.length; i++) {
             residual[i] = current[i] - predicted[i];
         }
         return residual;
+    }
+    private void encodeWithRLE(Bitstream bitstream, int[] data, int offset) throws IOException {
+        int currentValue = data[0] + offset;
+        int runLength = 1;
+
+        for (int i = 1; i < data.length; i++) {
+            int nextValue = data[i] + offset;
+
+            if (nextValue == currentValue) {
+                runLength++;
+            } else {
+                bitstream.writeBits(8, currentValue);
+                bitstream.writeBits(8, runLength);
+
+                currentValue = nextValue;
+                runLength = 1;
+            }
+        }
+        bitstream.writeBits(8, currentValue);
+        bitstream.writeBits(8, runLength);
     }
 }
