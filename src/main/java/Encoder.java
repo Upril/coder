@@ -31,6 +31,9 @@ public class Encoder {
                 }
                 vops.add(vop);
                 vop.encode(bitstream);
+
+                int progress = (int) ((i + 1) / (double) frames.size() * 100); // Calculate percentage
+                System.out.print("\r[" + "=".repeat(progress / 2) + " ".repeat(50 - progress / 2) + "] " + progress + "%");
             }
             bitstream.writeToFile(outputPath);
         }
