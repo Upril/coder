@@ -42,22 +42,34 @@ public class Bitstream implements Serializable{
 
     public int readBits(int numBits) throws IOException {
         int value = 0;
+        System.out.print("Reading "+numBits);
         while (numBits > 0) {
+            // Check if we need to load a new byte from the input stream
             if (bitCount == 0) {
-                bitBuffer = inputStream.read();
+                bitBuffer = inputStream.read(); // Read the next byte
                 if (bitBuffer == -1) {
                     throw new EOFException("End of stream reached");
                 }
-                bitCount = 8;
+                bitCount = 8; // Reset bit count to 8 after loading a new byte
             }
 
+            // Determine how many bits to read from the current byte
             int bitsToRead = Math.min(numBits, bitCount);
-            value <<= bitsToRead;
-            value |= (bitBuffer >> (bitCount - bitsToRead)) & ((1 << bitsToRead) - 1);
+            value <<= bitsToRead; // Shift the current value to make space for the new bits
+            value |= (bitBuffer >> (bitCount - bitsToRead)) & ((1 << bitsToRead) - 1); // Extract the bits and append them to value
+
+            // Update the bit count and number of bits left to read
             bitCount -= bitsToRead;
             numBits -= bitsToRead;
         }
-        return value;
+
+        // Apply a mask to ensure the result is unsigned
+        System.out.println(" bits: "+(value & ((1 << numBits) - 1)));
+        return value & ((1 << numBits) - 1); // Mask to handle overflow/unsigned result
+    }
+
+    public boolean hasRemaining() {
+        return inputStream.available() > 0 || bitCount > 0;
     }
 
     public void flush() throws IOException {

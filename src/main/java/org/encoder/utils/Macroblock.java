@@ -111,7 +111,7 @@ public class Macroblock implements Serializable {
         }
         return result;
     }
-    private static final int BLOCK_SIZE = 8;
+    static final int BLOCK_SIZE = 8;
     private static final int[][] DEFAULT_QUANTIZATION_MATRIX = {
             {16, 11, 10, 16, 24, 40, 51, 61},
             {12, 12, 14, 19, 26, 58, 60, 55},

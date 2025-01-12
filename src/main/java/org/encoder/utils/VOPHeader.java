@@ -7,7 +7,7 @@ public class VOPHeader implements Serializable {
     private int vopType;                 // VOP type (0 = I-VOP, 1 = P-VOP)
     private int vopTimeIncrement;        // VOP time increment
     private boolean vopCoded;            // Indicates if VOP is coded
-    private int vopQuant;                // Quantization parameter
+    private int vopQuant;                // Quantization parameterw
     private int vopWidth;                // VOP width in pixels
     private int vopHeight;               // VOP height in pixels
 
@@ -43,5 +43,29 @@ public class VOPHeader implements Serializable {
         bitstream.writeBits(13, vopHeight);
 
         // Padding or other flags can be added here as needed
+    }
+
+    public int getVopType() {
+        return vopType;
+    }
+
+    public int getVopTimeIncrement() {
+        return vopTimeIncrement;
+    }
+
+    public boolean isVopCoded() {
+        return vopCoded;
+    }
+
+    public int getVopQuant() {
+        return vopQuant;
+    }
+
+    public int getVopWidth() {
+        return vopWidth;
+    }
+
+    public int getVopHeight() {
+        return vopHeight;
     }
 }

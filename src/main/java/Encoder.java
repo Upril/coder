@@ -39,7 +39,7 @@ public class Encoder {
         }
     }
     public static void main(String[] args) {
-        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 852, 480, 844);
+        List<BufferedImage> frames = loadYUVFrames("C:\\Users\\jaxxo\\Desktop\\sample.yuv", 852, 480, 844); //844
         Encoder encoder = new Encoder();
         try{
             encoder.encodeToBinaryFile(frames,"output.bin");
