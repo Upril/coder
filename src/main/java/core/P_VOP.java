@@ -2,7 +2,9 @@ package core;
 
 import transforms.RLEHuffmanEncoder;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -159,6 +161,9 @@ public void encode(Bitstream bs) {
         final int OFFSET = 128;
         BufferedImage reconOut = new BufferedImage(curr.getWidth(), curr.getHeight(), BufferedImage.TYPE_INT_RGB);
 
+        int[][] lumaCur = extractLumaPlane(curr);
+        int[][] lumaRef = extractLumaPlane(refRecon);
+
         // Executor lokalny dla makrobloków tej klatki
         ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         // Zachowamy futures w tej samej kolejności co macroblocks list
@@ -172,7 +177,8 @@ public void encode(Bitstream bs) {
 
             futures.add(executor.submit(() -> {
                 // 1) ME
-                MotionVector mv = searchMV_Luma_SAD(curr, refRecon, mbX, mbY, searchRange);
+
+                MotionVector mv = searchMV_Luma_SAD(lumaCur, lumaRef, mbX, mbY, searchRange);
                 mb.setMotionVector(mv);
 
                 // 2) MC: predykcja z referencji

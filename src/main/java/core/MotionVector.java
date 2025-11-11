@@ -40,6 +40,53 @@ public final class MotionVector implements java.io.Serializable {
         }
         return new MotionVector(bestDx, bestDy);
     }
+    public static MotionVector searchMV_Luma_SAD(int[][] curY, int[][] refY, int blockX, int blockY, int R) {
+        int width = curY[0].length;
+        int height = curY.length;
+
+        // ograniczamy makroblok do granic obrazu
+        int x = Math.min(blockX, width - 16);
+        int y = Math.min(blockY, height - 16);
+
+        // Prefetch: wyciągamy 16x16 blok z curY
+        int[][] curBlock = new int[16][16];
+        for (int by = 0; by < 16; by++) {
+            System.arraycopy(curY[y + by], x, curBlock[by], 0, 16);
+        }
+
+        int bestDx = 0, bestDy = 0;
+        long bestCost = Long.MAX_VALUE;
+
+        for (int dy = -R; dy <= R; dy++) {
+            int ry = y + dy;
+            if (ry < 0 || ry + 15 >= height) continue;
+
+            for (int dx = -R; dx <= R; dx++) {
+                int rx = x + dx;
+                if (rx < 0 || rx + 15 >= width) continue;
+
+                long sad = 0;
+                for (int by = 0; by < 16; by++) {
+                    for (int bx = 0; bx < 16; bx++) {
+                        int d = curBlock[by][bx] - refY[ry + by][rx + bx];
+                        sad += (d < 0 ? -d : d);
+                        if (sad >= bestCost) break; // early exit
+                    }
+                    if (sad >= bestCost) break;
+                }
+
+                if (sad < bestCost) {
+                    bestCost = sad;
+                    bestDx = dx;
+                    bestDy = dy;
+                }
+            }
+        }
+
+        return new MotionVector(bestDx, bestDy);
+    }
+
+
 
     // ---- Zapis wektora ruchu: stałobitowy z offsetem ----
     public static void writeMV(Bitstream bs, MotionVector mv, int bits) throws IOException {

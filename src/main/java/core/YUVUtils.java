@@ -26,6 +26,25 @@ public class YUVUtils {
                 out[i++] = getLuma(img, x0 + x, y0 + y);
         return out;
     }
+    public static int[][] extractLumaPlane(BufferedImage img) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int[][] out = new int[h][w];
+
+        int[] rgb = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        for (int y = 0; y < h; y++) {
+            int base = y * w;
+            for (int x = 0; x < w; x++) {
+                int val = rgb[base + x];
+                int r = (val >> 16) & 0xFF;
+                int g = (val >> 8) & 0xFF;
+                int b = val & 0xFF;
+                out[y][x] = (r * 299 + g * 587 + b * 114) / 1000;
+            }
+        }
+        return out;
+    }
+
 //public static int[] extractLumaBlock(BufferedImage img, int startX, int startY, int w, int h) {
 //    int width = img.getWidth();
 //    int height = img.getHeight();
