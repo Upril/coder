@@ -1,16 +1,15 @@
 package org.encoder.utils;
 
-import org.encoder.utils.VideoObjectPlane;
+import core.Bitstream;
+import core.VOPHeader;
+import transforms.DCT;
 
-import java.awt.image.BufferedImage;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.encoder.utils.DCT.applyIDCT;
-import static org.encoder.utils.Macroblock.BLOCK_SIZE;
-import static org.encoder.utils.Quantizer.inverseQuantize;
+import static core.Macroblock.BLOCK_SIZE;
 
 public class Decoder {
     private static final int[][] DEFAULT_QUANTIZATION_MATRIX = {

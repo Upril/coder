@@ -1,4 +1,4 @@
-package org.encoder.utils;
+package core;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -23,26 +23,6 @@ public class VOPHeader implements Serializable {
     public void encodeHeader(Bitstream bitstream) throws IOException {
         // Start Code
         bitstream.writeBits(32, 0x000001B6);  // VOP start code is typically 0x000001B6
-
-        // VOP Type (2 bits)
-        bitstream.writeBits(2, vopType);
-
-        // VOP Time Increment (Modulo Time Base)
-        bitstream.writeBits(16, vopTimeIncrement);  // Assuming 16 bits for time increment
-
-        // VOP Coded (1 bit)
-        bitstream.writeBits(1, vopCoded ? 1 : 0);
-
-        // VOP Quantization Parameter (5 bits)
-        bitstream.writeBits(5, vopQuant);
-
-        // VOP Width (13 bits)
-        bitstream.writeBits(13, vopWidth);
-
-        // VOP Height (13 bits)
-        bitstream.writeBits(13, vopHeight);
-
-        // Padding or other flags can be added here as needed
     }
 
     public int getVopType() {

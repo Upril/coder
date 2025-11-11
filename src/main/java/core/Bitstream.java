@@ -1,7 +1,6 @@
-package org.encoder.utils;
+package core;
 
 import java.io.*;
-import java.util.List;
 
 public class Bitstream implements Serializable{
     private ByteArrayOutputStream outputStream;
@@ -37,6 +36,12 @@ public class Bitstream implements Serializable{
             outputStream.write(bitBuffer & 0xFF);
             bitBuffer >>= 8;
             bitCount -= 8;
+        }
+    }
+
+    public void writeBytes(byte[] data) throws IOException {
+        for (byte b : data) {
+            writeBits(8, b & 0xFF);
         }
     }
 
