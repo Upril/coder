@@ -13,6 +13,12 @@ public class Macroblock implements Serializable {
     private int[] chrominanceU;
     private int[] chrominanceV;
     private MotionVector motionVector;
+
+    private int[][] quantizationMatrix = DEFAULT_QUANTIZATION_MATRIX;
+
+    public void setQuantizationMatrix(int[][] matrix){
+        this.quantizationMatrix = matrix;
+    }
     private static final int QUANTIZATION_SCALE = 20;
 
     public MotionVector getMotionVector() {
@@ -57,9 +63,12 @@ public class Macroblock implements Serializable {
                 int pixelX = startX + x;
                 int pixelY = startY + y;
                 if (pixelX < image.getWidth() && pixelY < image.getHeight()) {
-                    Color color = new Color(image.getRGB(pixelX, pixelY));
+                    int rgb = image.getRGB(pixelX, pixelY);
+                    int r = (rgb >> 16) & 0xFF;
+                    int g = (rgb >> 8) & 0xFF;
+                    int b = rgb & 0xFF;
                     // Convert RGB to YUV and store in arrays
-                    int[] yuv = rgbToYuv(color.getRed(), color.getGreen(), color.getBlue());
+                    int[] yuv = rgbToYuv(r, g, b);
                     luminance[y * 16 + x] = yuv[0];
 
                     // For chrominance, subsample and store every other pixel
@@ -113,7 +122,7 @@ public class Macroblock implements Serializable {
         return result;
     }
     public static final int BLOCK_SIZE = 8;
-    private static final int[][] DEFAULT_QUANTIZATION_MATRIX = {
+    public static final int[][] DEFAULT_QUANTIZATION_MATRIX = {
             {16, 11, 10, 16, 24, 40, 51, 61},
             {12, 12, 14, 19, 26, 58, 60, 55},
             {14, 13, 16, 24, 40, 57, 69, 56},
@@ -122,6 +131,16 @@ public class Macroblock implements Serializable {
             {24, 35, 55, 64, 81, 104, 113, 92},
             {49, 64, 78, 87, 103, 121, 120, 101},
             {72, 92, 95, 98, 112, 100, 103, 99}
+    };
+    public static final int[][] FLAT_QUANTIZATION_MATRIX = {
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16},
+            {16, 16, 16, 16, 16, 16, 16, 16}
     };
     public void applyDCTAndQuantization() {
         // Process luminance (16x16 block, 256 values)
@@ -151,7 +170,7 @@ public class Macroblock implements Serializable {
 
                 // Apply DCT and quantization
                 double[][] dctCoefficients = DCT.applyDCT(subBlock);
-                int[][] quantizedCoefficients = Quantizer.quantize(dctCoefficients, DEFAULT_QUANTIZATION_MATRIX);
+                int[][] quantizedCoefficients = Quantizer.quantize(dctCoefficients, quantizationMatrix);
 
                 // Place transformed coefficients back into the result
                 for (int y = 0; y < BLOCK_SIZE; y++) {

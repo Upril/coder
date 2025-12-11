@@ -181,7 +181,7 @@ public static void main(String[] args) {
                 "D:/sample.yuv",   // input
                 1920,              // width
                 1080,              // height
-                200,               // frame count
+                2000,               // frame count
                 "output.bin");     // output
     } catch (IOException e) {
         throw new RuntimeException(e);

@@ -104,23 +104,22 @@ public class YUVUtils {
         return out;
     }
     // -------- IQ + IDCT + flatten --------
-    public static int[] inverseTransform(int[] qFlat, int blockWidth, int blockHeight) {
+    public static int[] inverseTransform(int[] qFlat, int blockWidth, int blockHeight, int[][] matrix) {
         if (blockWidth == 8 && blockHeight == 8) {
-            return inverseTransform8x8(qFlat, 0, 0, 8);
+            return inverseTransform8x8(qFlat, 0, 0, 8, matrix);
         } else if (blockWidth == 16 && blockHeight == 16) {
             int[] out = new int[256];
-            int[] tl = inverseTransform8x8(qFlat, 0, 0, 16);
+            int[] tl = inverseTransform8x8(qFlat, 0, 0, 16, matrix);
             copyBlockTo(out, tl, 0, 0, 16);
-            int[] tr = inverseTransform8x8(qFlat, 8, 0, 16);
+            int[] tr = inverseTransform8x8(qFlat, 8, 0, 16, matrix);
             copyBlockTo(out, tr, 8, 0, 16);
-            int[] bl = inverseTransform8x8(qFlat, 0, 8, 16);
+            int[] bl = inverseTransform8x8(qFlat, 0, 8, 16, matrix);
             copyBlockTo(out, bl, 0, 8, 16);
-            int[] br = inverseTransform8x8(qFlat, 8, 8, 16);
+            int[] br = inverseTransform8x8(qFlat, 8, 8, 16, matrix);
             copyBlockTo(out, br, 8, 8, 16);
             return out;
-        } else {
-            throw new IllegalArgumentException("Unsupported block size " + blockWidth + "x" + blockHeight);
         }
+        throw new IllegalArgumentException("Unsupported block size");
     }
     public static void copyBlockTo(int[] dest, int[] src, int destStartX, int destStartY, int stride) {
         for (int by = 0; by < 8; by++) {
@@ -129,7 +128,7 @@ public class YUVUtils {
             }
         }
     }
-    public static int[] inverseTransform8x8(int[] qFlat, int startX, int startY, int stride) {
+    public static int[] inverseTransform8x8(int[] qFlat, int startX, int startY, int stride, int[][] matrix) {
         int[][] q2d = new int[8][8];
         for (int y = 0; y < 8; y++) {
             for (int x = 0; x < 8; x++) {
@@ -137,14 +136,14 @@ public class YUVUtils {
             }
         }
 
-        // IQ + IDCT
-        double[][] deq = Quantizer.inverseQuantize(q2d, DEFAULT_QUANTIZATION_MATRIX);
-        double[][] idct = DCT.applyIDCT(deq);
+        // UŻYWAMY PRZEKAZANEJ MACIERZY, A NIE DEFAULT!
+        double[][] deq = Quantizer.inverseQuantize(q2d, matrix);
 
+        double[][] idct = DCT.applyIDCT(deq);
         int[] out = new int[64];
         for (int y = 0; y < 8; y++) {
             for (int x = 0; x < 8; x++) {
-                out[y*8 + x] = (int)Math.round(idct[y][x]); // UWAGA: bez clamp!
+                out[y*8 + x] = (int)Math.round(idct[y][x]);
             }
         }
         return out;
@@ -192,6 +191,42 @@ public class YUVUtils {
 //            }
 //        }
 //    }
+
+    //wersja z różowo-niebieskim szumem
+//    public static void blitYUV420BlockToRGB(BufferedImage dst, int startX, int startY,
+//                                            int[] y, int[] u, int[] v) {
+//        int width = dst.getWidth();
+//        int height = dst.getHeight();
+//        int[] rgb = ((DataBufferInt) dst.getRaster().getDataBuffer()).getData();
+//
+//        for (int by = 0; by < 16; by++) {
+//            int dstY = startY + by;
+//            if (dstY >= height) break; // nie wychodź poza dół
+//
+//            int dstLine = dstY * width + startX;
+//            int uvLine = (by / 2) * 8; // subsampling 4:2:0
+//
+//            for (int bx = 0; bx < 16; bx++) {
+//                int dstX = startX + bx;
+//                if (dstX >= width) break; // nie wychodź poza prawo
+//
+//                int Y = y[by * 16 + bx];
+//                int U = u[uvLine + (bx / 2)];
+//                int V = v[uvLine + (bx / 2)];
+//
+//                int c = Y - 16;
+//                int d = U - 128;
+//                int e = V - 128;
+//
+//                int R = clamp((298 * c + 409 * e + 128) >> 8);
+//                int G = clamp((298 * c - 100 * d - 208 * e + 128) >> 8);
+//                int B = clamp((298 * c + 516 * d + 128) >> 8);
+//
+//                rgb[dstLine + bx] = (0xFF << 24) | (R << 16) | (G << 8) | B;
+//            }
+//        }
+//    }
+
     public static void blitYUV420BlockToRGB(BufferedImage dst, int startX, int startY,
                                             int[] y, int[] u, int[] v) {
         int width = dst.getWidth();
@@ -200,26 +235,32 @@ public class YUVUtils {
 
         for (int by = 0; by < 16; by++) {
             int dstY = startY + by;
-            if (dstY >= height) break; // nie wychodź poza dół
+            if (dstY >= height) break;
 
             int dstLine = dstY * width + startX;
             int uvLine = (by / 2) * 8; // subsampling 4:2:0
 
             for (int bx = 0; bx < 16; bx++) {
                 int dstX = startX + bx;
-                if (dstX >= width) break; // nie wychodź poza prawo
+                if (dstX >= width) break;
 
-                int Y = y[by * 16 + bx];
-                int U = u[uvLine + (bx / 2)];
-                int V = v[uvLine + (bx / 2)];
+                int Y_val = y[by * 16 + bx];
+                int U_val = u[uvLine + (bx / 2)];
+                int V_val = v[uvLine + (bx / 2)];
 
-                int c = Y - 16;
-                int d = U - 128;
-                int e = V - 128;
+                // C = Y, D = U - 128, E = V - 128
+                int C = Y_val;
+                int D = U_val - 128;
+                int E = V_val - 128;
 
-                int R = clamp((298 * c + 409 * e + 128) >> 8);
-                int G = clamp((298 * c - 100 * d - 208 * e + 128) >> 8);
-                int B = clamp((298 * c + 516 * d + 128) >> 8);
+                // Integer approximation of:
+                // R = Y + 1.402 * (V-128)
+                // G = Y - 0.34414 * (U-128) - 0.71414 * (V-128)
+                // B = Y + 1.772 * (U-128)
+
+                int R = clamp(C + ((359 * E) >> 8));
+                int G = clamp(C - ((88 * D + 183 * E) >> 8));
+                int B = clamp(C + ((454 * D) >> 8));
 
                 rgb[dstLine + bx] = (0xFF << 24) | (R << 16) | (G << 8) | B;
             }

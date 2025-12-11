@@ -6,7 +6,7 @@ public class Quantizer {
         int[][] quantized = new int[size][size];
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
-                quantized[i][j] = (int) Math.round(block[i][j] / (quantMatrix[i][j] * 5.0));
+                quantized[i][j] = (int) Math.round(block[i][j] / (quantMatrix[i][j] * 3.0));
             }
         }
         return quantized;
@@ -17,7 +17,7 @@ public class Quantizer {
         double[][] block = new double[size][size];
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
-                block[i][j] = quantizedBlock[i][j] * quantMatrix[i][j] * 5.0;
+                block[i][j] = quantizedBlock[i][j] * quantMatrix[i][j] * 3.0;
             }
         }
         return block;

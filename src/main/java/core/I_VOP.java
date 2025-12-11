@@ -83,9 +83,9 @@ public void encode(Bitstream bs) {
                 RLEHuffmanEncoder.encode(localBs, qU, OFFSET);
                 RLEHuffmanEncoder.encode(localBs, qV, OFFSET);
 
-                int[] recY = inverseTransform(qY, 16, 16);
-                int[] recU = inverseTransform(qU, 8, 8);
-                int[] recV = inverseTransform(qV, 8, 8);
+                int[] recY = inverseTransform(qY, 16, 16,Macroblock.DEFAULT_QUANTIZATION_MATRIX);
+                int[] recU = inverseTransform(qU, 8, 8, Macroblock.DEFAULT_QUANTIZATION_MATRIX);
+                int[] recV = inverseTransform(qV, 8, 8, Macroblock.DEFAULT_QUANTIZATION_MATRIX);
 
                 for (int i = 0; i < recY.length; i++) recY[i] = clamp(recY[i], 0, 255);
                 for (int i = 0; i < recU.length; i++) recU[i] = clamp(recU[i], 0, 255);
