@@ -45,31 +45,105 @@ public class YUVUtils {
         return out;
     }
 
-//public static int[] extractLumaBlock(BufferedImage img, int startX, int startY, int w, int h) {
-//    int width = img.getWidth();
-//    int height = img.getHeight();
-//    int[] rgb = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
-//    int[] out = new int[w * h];
-//
-//    int idx = 0;
-//    for (int y = 0; y < h; y++) {
-//        int imgY = startY + y;
-//        if (imgY >= height) break;  // nie wychodź poza dół
-//
-//        int base = imgY * width + startX;
-//        for (int x = 0; x < w; x++) {
-//            int imgX = startX + x;
-//            if (imgX >= width) break; // nie wychodź poza prawo
-//
-//            int val = rgb[base + x];
-//            int r = (val >> 16) & 0xFF;
-//            int g = (val >> 8) & 0xFF;
-//            int b = val & 0xFF;
-//            out[idx++] = (r * 299 + g * 587 + b * 114) / 1000;
-//        }
-//    }
-//    return out;
-//}
+// --- INTERPOLACJA PÓŁPIKSELOWA ---
+
+    /**
+     * Pobiera blok Luma z precyzją 0.5 piksela.
+     * @param lumaPlane Obraz źródłowy
+     * @param x2 Współrzędna X w jednostkach półpikselowych (np. 10 oznacza 5.0px, 11 oznacza 5.5px)
+     * @param y2 Współrzędna Y w jednostkach półpikselowych
+     */
+    public static int[] extractLumaBlockHalfPel(int[][] lumaPlane, int x2, int y2, int w, int h) {
+        int[] out = new int[w * h];
+        int idx = 0;
+        int imgH = lumaPlane.length;
+        int imgW = lumaPlane[0].length;
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int currX2 = x2 + (x * 2);
+                int currY2 = y2 + (y * 2);
+                out[idx++] = getInterpolatedPixelArray(lumaPlane, currX2, currY2, imgW, imgH);
+            }
+        }
+        return out;
+    }
+
+    private static int getInterpolatedPixelArray(int[][] luma, int x2, int y2, int w, int h) {
+        // Integer coordinates
+        int xInt = x2 >> 1; // to samo co x2 / 2
+        int yInt = y2 >> 1;
+
+        // Czy jesteśmy w połówce?
+        boolean xHalf = (x2 & 1) == 1;
+        boolean yHalf = (y2 & 1) == 1;
+
+        // Pobieranie z clampowaniem (bardzo szybkie na tablicy)
+        int A = luma[clamp(yInt, 0, h - 1)][clamp(xInt, 0, w - 1)];
+
+        if (!xHalf && !yHalf) return A;
+
+        if (xHalf && !yHalf) {
+            int B = luma[clamp(yInt, 0, h - 1)][clamp(xInt + 1, 0, w - 1)];
+            return (A + B + 1) >> 1;
+        }
+
+        if (!xHalf && yHalf) {
+            int C = luma[clamp(yInt + 1, 0, h - 1)][clamp(xInt, 0, w - 1)];
+            return (A + C + 1) >> 1;
+        }
+
+        int B = luma[clamp(yInt, 0, h - 1)][clamp(xInt + 1, 0, w - 1)];
+        int C = luma[clamp(yInt + 1, 0, h - 1)][clamp(xInt, 0, w - 1)];
+        int D = luma[clamp(yInt + 1, 0, h - 1)][clamp(xInt + 1, 0, w - 1)];
+
+        return (A + B + C + D + 2) >> 2;
+    }
+
+    /**
+     * Zwraca wartość piksela dla współrzędnych półpikselowych.
+     * x2, y2 - współrzędne pomnożone razy 2.
+     */
+    private static int getInterpolatedPixel(BufferedImage img, int x2, int y2) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+
+        // Bazowe współrzędne całkowite (podłoga)
+        int xInt = x2 / 2;
+        int yInt = y2 / 2;
+
+        // Czy jesteśmy w "połówce"? (reszta z dzielenia)
+        boolean xHalf = (x2 % 2) != 0;
+        boolean yHalf = (y2 % 2) != 0;
+
+        // Pobieramy piksele sąsiednie (z bezpiecznym clampowaniem do granic obrazu)
+        int A = getLumaSafe(img, xInt, yInt, w, h);
+
+        if (!xHalf && !yHalf) return A; // Dokładnie na pikselu (Integer)
+
+        if (xHalf && !yHalf) { // Pozioma połówka (0.5, 0)
+            int B = getLumaSafe(img, xInt + 1, yInt, w, h);
+            return (A + B + 1) >> 1; // Średnia (A+B)/2
+        }
+
+        if (!xHalf && yHalf) { // Pionowa połówka (0, 0.5)
+            int C = getLumaSafe(img, xInt, yInt + 1, w, h);
+            return (A + C + 1) >> 1;
+        }
+
+        // Środek (0.5, 0.5)
+        int B = getLumaSafe(img, xInt + 1, yInt, w, h);
+        int C = getLumaSafe(img, xInt, yInt + 1, w, h);
+        int D = getLumaSafe(img, xInt + 1, yInt + 1, w, h);
+
+        return (A + B + C + D + 2) >> 2; // Średnia z 4 sąsiadów
+    }
+
+    private static int getLumaSafe(BufferedImage img, int x, int y, int w, int h) {
+        x = Math.max(0, Math.min(x, w - 1));
+        y = Math.max(0, Math.min(y, h - 1));
+        return getLuma(img, x, y);
+    }
 
     // U/V 4:2:0: prosty downsample z RGB (jak u Ciebie). Użyj tych samych współczynników co w Macroblock.
     public static int[] extractChromaBlock420_U(BufferedImage img, int x0, int y0) {

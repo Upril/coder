@@ -11,8 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
-import static core.MotionVector.searchMV_Luma_SAD;
-import static core.MotionVector.writeMV;
+import static core.MotionVector.*;
 import static core.YUVUtils.*;
 
 public class P_VOP extends VideoObjectPlane implements Serializable {
@@ -161,7 +160,8 @@ public void encode(Bitstream bs) {
         final int OFFSET = 128;
         final long SKIP_THRESHOLD = 1500;
 
-        // 1. Przygotowanie danych (bezpieczne dla wątków - tylko odczyt)
+        // 1. Konwersja całych klatek na tablice int[][] (Tylko raz!)
+        // To jest klucz do wydajności.
         int[][] lumaCur = extractLumaPlane(curr);
         int[][] lumaRef = extractLumaPlane(refRecon);
 
@@ -169,77 +169,77 @@ public void encode(Bitstream bs) {
         int mbRows = (curr.getHeight() + 15) / 16;
         int totalMacroblocks = mbCols * mbRows;
 
-        // 2. Tablica na wyniki - prealokowana.
-        // Dzięki temu wątki mogą pisać w losowej kolejności,
-        // a na końcu i tak odczytamy je po kolei (zachowując strukturę bitstreamu).
         EncodedMacroblock[] resultsArray = new EncodedMacroblock[totalMacroblocks];
-
-        // 3. Atomowy licznik do rozdawania zadań
         java.util.concurrent.atomic.AtomicInteger nextMbIndex = new java.util.concurrent.atomic.AtomicInteger(0);
 
-        // 4. Pula wątków
         int cores = Runtime.getRuntime().availableProcessors();
         ExecutorService executor = Executors.newFixedThreadPool(cores);
-
-        // Lista zadań dla wątków (Workerów)
-        // Tworzymy tyle workerów ile rdzeni. Każdy worker działa w pętli aż wyczerpią się bloki.
         List<Callable<Void>> workers = new ArrayList<>(cores);
 
         for (int i = 0; i < cores; i++) {
             workers.add(() -> {
-
                 while (true) {
-                    // Pobierz indeks do przetworzenia
                     int idx = nextMbIndex.getAndIncrement();
-                    if (idx >= totalMacroblocks) break; // Koniec pracy
+                    if (idx >= totalMacroblocks) break;
 
-                    // Przelicz indeks liniowy na X, Y
                     int mbX = (idx % mbCols) * 16;
                     int mbY = (idx / mbCols) * 16;
 
                     Macroblock mb = macroblocks.get(idx);
 
-                    // 1. ME
-                    MotionVector mv = searchMV_Luma_SAD(lumaCur, lumaRef, mbX, mbY, searchRange);
+                    // --- 1. ME: Używamy tablic int[][] ---
+                    // searchRange w pikselach (np. 8). Funkcja zwraca jednostki x2.
+                    MotionVector mv = MotionVector.searchMV_HalfPel(lumaCur, lumaRef, mbX, mbY, searchRange);
                     mb.setMotionVector(mv);
 
-                    // 2. MC & Residuum
-                    int[] predY = extractLumaBlock(refRecon, mbX + mv.dx, mbY + mv.dy, 16, 16);
-                    int[] currY = extractLumaBlock(curr, mbX, mbY, 16, 16);
-                    int[] resY = sub(currY, predY);
-                    int[] predU = extractChromaBlock420_U(refRecon, mbX + mv.dx, mbY + mv.dy);
-                    int[] predV = extractChromaBlock420_V(refRecon, mbX + mv.dx, mbY + mv.dy);
+                    // --- 2. MC: Pobieranie predykcji ---
+                    // refX2, refY2 -> współrzędne absolutne w systemie półpikselowym
+                    int refX2 = (mbX * 2) + mv.dx;
+                    int refY2 = (mbY * 2) + mv.dy;
 
-                    // 3. SKIP Check
+                    // Predykcja Luma (Interpolowana z tablicy ref)
+                    int[] predY = extractLumaBlockHalfPel(lumaRef, refX2, refY2, 16, 16);
+
+                    int[] currY = new int[256];
+                    for(int y=0; y<16; y++)
+                        for(int x=0; x<16; x++)
+                            currY[y*16+x] = lumaCur[clamp(mbY+y,0,curr.getHeight()-1)][clamp(mbX+x,0,curr.getWidth()-1)];
+
+                    int[] resY = sub(currY, predY);
+
+                    // Chroma (Nearest Neighbor)
+                    int intMvX = mv.dx / 2; // powrót do pełnych pikseli
+                    int intMvY = mv.dy / 2;
+                    int[] predU = extractChromaBlock420_U(refRecon, mbX + intMvX, mbY + intMvY);
+                    int[] predV = extractChromaBlock420_V(refRecon, mbX + intMvX, mbY + intMvY);
+
+                    // --- 3. SKIP Check ---
                     long energy = 0;
                     for (int val : resY) energy += Math.abs(val);
                     boolean isSkip = (mv.dx == 0 && mv.dy == 0 && energy < SKIP_THRESHOLD);
 
-                    // Kontener na wynik
                     EncodedMacroblock out = new EncodedMacroblock();
                     out.startX = mbX;
                     out.startY = mbY;
-                    out.mv = mv; // Zapisujemy surowy MV, różnicę policzymy przy zapisie sekwencyjnym!
+                    out.mv = mv;
                     out.isSkip = isSkip;
 
                     if (isSkip) {
                         out.recY = predY;
                         out.recU = predU;
                         out.recV = predV;
-                        // Nie generujemy bitstreamu tutaj, zrobimy to później, żeby obsłużyć DiffMV poprawnie
                     } else {
+                        // Pobieramy chroma z oryginału
                         int[] currU = extractChromaBlock420_U(curr, mbX, mbY);
                         int[] currV = extractChromaBlock420_V(curr, mbX, mbY);
                         int[] resU = sub(currU, predU);
                         int[] resV = sub(currV, predV);
 
                         mb.setQuantizationMatrix(Macroblock.FLAT_QUANTIZATION_MATRIX);
-
                         out.qY = mb.applyDCTAndQuantizationToBlock(resY, 16, 16);
                         out.qU = mb.applyDCTAndQuantizationToBlock(resU, 8, 8);
                         out.qV = mb.applyDCTAndQuantizationToBlock(resV, 8, 8);
 
-                        // Rekonstrukcja
                         int[] iqY = inverseTransform(out.qY, 16, 16, Macroblock.FLAT_QUANTIZATION_MATRIX);
                         int[] iqU = inverseTransform(out.qU, 8, 8, Macroblock.FLAT_QUANTIZATION_MATRIX);
                         int[] iqV = inverseTransform(out.qV, 8, 8, Macroblock.FLAT_QUANTIZATION_MATRIX);
@@ -249,60 +249,51 @@ public void encode(Bitstream bs) {
                         out.recV = add(iqV, predV);
                     }
 
-                    // Clampowanie
-                    for (int k=0; k<out.recY.length; k++) out.recY[k] = clamp(out.recY[k], 0, 255);
-                    for (int k=0; k<out.recU.length; k++) out.recU[k] = clamp(out.recU[k], 0, 255);
-                    for (int k=0; k<out.recV.length; k++) out.recV[k] = clamp(out.recV[k], 0, 255);
+                    // Clamp
+                    for(int k=0; k<256; k++) out.recY[k] = clamp(out.recY[k], 0, 255);
+                    for(int k=0; k<64; k++) {
+                        out.recU[k] = clamp(out.recU[k], 0, 255);
+                        out.recV[k] = clamp(out.recV[k], 0, 255);
+                    }
 
-                    // Zapisz wynik w odpowiednim "slocie" tablicy
-                    // To jest bezpieczne wielowątkowo, bo każdy wątek pisze pod unikalny indeks
                     resultsArray[idx] = out;
                 }
                 return null;
             });
         }
 
-        // 5. Uruchomienie workerów i czekanie na koniec
         executor.invokeAll(workers);
         executor.shutdown();
         executor.awaitTermination(10, TimeUnit.MINUTES);
 
-        // 6. SEKWENCYJNY ZAPIS DO STRUMIENIA (Main Thread)
-        // Tutaj robimy kodowanie entropijne i DiffMV.
-
+        // --- ZAPIS ---
         BufferedImage reconOut = new BufferedImage(curr.getWidth(), curr.getHeight(), BufferedImage.TYPE_INT_RGB);
         MotionVector prevMV = new MotionVector(0,0);
 
         for (int i = 0; i < totalMacroblocks; i++) {
             EncodedMacroblock em = resultsArray[i];
-
-            // Reset predyktora MV na początku każdego wiersza (zgodnie ze sztuką)
             if (i % mbCols == 0) prevMV = new MotionVector(0,0);
 
             if (em.isSkip) {
-                bs.writeBits(1, 1); // Flag SKIP = 1
-                prevMV = new MotionVector(0,0); // Reset predyktora w skipie
+                bs.writeBits(1, 1);
+                prevMV = new MotionVector(0,0);
             } else {
-                bs.writeBits(1, 0); // Flag SKIP = 0
+                bs.writeBits(1, 0);
 
-                // DiffMV
                 int diffX = em.mv.dx - prevMV.dx;
                 int diffY = em.mv.dy - prevMV.dy;
-                writeMV(bs, new MotionVector(diffX, diffY), 7);
+                writeMV(bs, new MotionVector(diffX, diffY), 9);
+
                 prevMV = em.mv;
 
-                // Huffman (robimy to tutaj, bo trwa ułamki mikrosekund)
                 RLEHuffmanEncoder.encode(bs, em.qY, OFFSET);
                 RLEHuffmanEncoder.encode(bs, em.qU, OFFSET);
                 RLEHuffmanEncoder.encode(bs, em.qV, OFFSET);
             }
-
-            // Blit do obrazu wynikowego
             blitYUV420BlockToRGB(reconOut, em.startX, em.startY, em.recY, em.recU, em.recV);
         }
 
         this.reconOut = reconOut;
-        // ... zapis pliku png (opcjonalnie) ...
 
     } catch (Exception e) {
         throw new RuntimeException("Error encoding P-VOP", e);

@@ -232,6 +232,66 @@ public final class MotionVector implements java.io.Serializable {
         return new MotionVector(bestDx, bestDy);
     }
 
+    /**
+     * Wyszukiwanie ruchu z precyzją półpikselową.
+     * Zwraca wektor przesunięcia w jednostkach 0.5 piksela!
+     * (np. dx=1 oznacza przesunięcie o 0.5 px)
+     */
+    public static MotionVector searchMV_HalfPel(int[][] curY, int[][] refY, int mbX, int mbY, int R) {
+        // 1. Integer Search (Szybki Step Search na tablicach)
+        MotionVector integerMV = searchMV_Luma_SAD(curY, refY, mbX, mbY, R);
+
+        int bestX2 = integerMV.dx * 2;
+        int bestY2 = integerMV.dy * 2;
+        long minSAD = Long.MAX_VALUE;
+
+        // Pobierz blok bieżący raz (z tablicy)
+        // Używamy extractLumaBlock (wersja integer) dla curY, bo curY nie jest interpolowane
+        int[] curBlock = new int[256];
+        int h = curY.length;
+        int w = curY[0].length;
+        for(int y=0; y<16; y++) {
+            for(int x=0; x<16; x++) {
+                curBlock[y*16+x] = curY[YUVUtils.clamp(mbY+y, 0, h-1)][YUVUtils.clamp(mbX+x, 0, w-1)];
+            }
+        }
+
+        // 2. Refinement (Sprawdzenie 8 sąsiadów wokół wyniku Integer)
+        int finalDx2 = bestX2;
+        int finalDy2 = bestY2;
+
+        // Sprawdzamy otoczenie ±1 w jednostkach połówkowych
+        for (int dy2 = -1; dy2 <= 1; dy2++) {
+            for (int dx2 = -1; dx2 <= 1; dx2++) {
+
+                // Kandydat wektora (względem bloku)
+                int checkVecX2 = bestX2 + dx2;
+                int checkVecY2 = bestY2 + dy2;
+
+                // Pozycja w obrazie referencyjnym (względem 0,0)
+                int refGlobalX2 = (mbX * 2) + checkVecX2;
+                int refGlobalY2 = (mbY * 2) + checkVecY2;
+
+                // Pobranie interpolowanego bloku (SZYBKIE)
+                int[] predBlock = YUVUtils.extractLumaBlockHalfPel(refY, refGlobalX2, refGlobalY2, 16, 16);
+
+                long sad = 0;
+                for (int i = 0; i < 256; i++) {
+                    sad += Math.abs(curBlock[i] - predBlock[i]);
+                    if (sad >= minSAD) break; // Early exit
+                }
+
+                if (sad < minSAD) {
+                    minSAD = sad;
+                    finalDx2 = checkVecX2;
+                    finalDy2 = checkVecY2;
+                }
+            }
+        }
+
+        return new MotionVector(finalDx2, finalDy2);
+    }
+
     // ---- Zapis wektora ruchu: stałobitowy z offsetem ----
     public static void writeMV(Bitstream bs, MotionVector mv, int bits) throws IOException {
         int range = 1 << (bits - 1);   // np. 64 dla 7 bitów
