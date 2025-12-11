@@ -1,7 +1,4 @@
-import core.Bitstream;
-import core.I_VOP;
-import core.P_VOP;
-import core.VideoObjectPlane;
+import core.*;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
@@ -109,8 +106,8 @@ public class Encoder {
     public void encodeToBinaryFile(
             String yuvFilePath, int width, int height, int frameCount, String outputPath) throws IOException {
 
-        final int GOP_SIZE = 30; // co 30 klatek wymuszaj I-VOP
-        final int SEARCH_RANGE = 8; // zakres dla predykcji ruchu
+        final int GOP_SIZE = 30;    // Maksymalny odstęp między klatkami I
+        final int SEARCH_RANGE = 8; // Zakres dla predykcji ruchu
 
         int frameSize = width * height * 3 / 2; // YUV 4:2:0
 
@@ -119,6 +116,10 @@ public class Encoder {
 
             byte[] frameData = new byte[frameSize];
             BufferedImage refRecon = null; // referencja dla P-klatek
+
+            // Własny licznik od ostatniej klatki I ---
+            // Używamy tego zamiast (i % GOP_SIZE), żeby resetować cykl po zmianie sceny
+            int framesSinceLastIntra = GOP_SIZE;
 
             for (int i = 0; i < frameCount; i++) {
                 long offset = (long) i * frameSize;
@@ -130,16 +131,38 @@ public class Encoder {
                 BufferedImage frame = yuvToBufferedImage(frameData, 0, width, height);
                 Bitstream localStream = new Bitstream();
 
-                if (i % GOP_SIZE == 0 || refRecon == null) {
+                // --- ZMIANA 2: Detekcja zmiany sceny ---
+                boolean isSceneChange = false;
+
+                if (refRecon != null) {
+                    if (SceneChangeDetector.detect(frame, refRecon)) {
+                        isSceneChange = true;
+                        // Opcjonalnie: logowanie dla celów testowych
+                        System.out.println("\n[Frame " + i + "] Wykryto zmianę sceny! Wymuszam I-VOP.");
+                    }
+                }
+
+                // Kodujemy jako I-VOP jeśli:
+                // 1. Minął czas GOP_SIZE (wymuszenie okresowe)
+                // 2. Nie mamy jeszcze referencji (pierwsza klatka)
+                // 3. Wykryto zmianę sceny (wymuszenie adaptacyjne)
+                if (framesSinceLastIntra >= GOP_SIZE || refRecon == null || isSceneChange) {
+
                     // 🔹 I-VOP (pełna klatka intra)
                     I_VOP iVop = new I_VOP(frame);
                     iVop.encode(localStream);
-                    refRecon = iVop.getReconOut(); // zapisz jako referencję
+                    refRecon = iVop.getReconOut();
+
+                    framesSinceLastIntra = 0; // Resetujemy licznik po klatce I
+
                 } else {
+
                     // 🔹 P-VOP (predykcja + kompensacja)
                     P_VOP pVop = new P_VOP(frame, refRecon, SEARCH_RANGE);
                     pVop.encode(localStream);
                     refRecon = pVop.getReconOut();
+
+                    framesSinceLastIntra++; // Inkrementujemy licznik
                 }
 
                 // 🔹 zapis wynikowego bitstreamu do pliku
