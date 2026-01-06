@@ -1,6 +1,4 @@
-package org.encoder.utils;
-
-import core.YUVUtils;
+package core;
 
 import java.awt.image.BufferedImage;
 
